@@ -10,6 +10,19 @@
     var socket = io.connect('http://localhost:8080');
     socket.on('connect', function() {
         $('body').append('<div>Connected to chat</div>');
+        
+        socket.emit(
+            'message',
+            {type: 'join', user: 'liam', room: 'chat'}
+        );
+        socket.emit(
+            'message',
+            {type: 'chat', user: 'liam', room: 'chat', text: 'hi there'}
+        );
+        socket.emit(
+            'message',
+            {type: 'leave', user: 'liam', room: 'chat'}
+        );
     });
     socket.on('message', function(data) {
         $('body').append('<div>' + data + '</div>');
