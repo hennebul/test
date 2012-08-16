@@ -4,45 +4,44 @@
 // :: Variables
 
 // Web server.
-var http = require('http').createServer(handleReq);
+var http = require('http').createServer(handleRequest);
 
 // Chat server.
-var server = require('socket.io').listen(http);
+var chat = require('socket.io').listen(http);
 
 // File system object.
 var fs = require('fs');
 
-// The page to return for all http requests.
-var page;
+// The login page to be returned for all HTTP GET requests.
+var loginPage = fs.readFileSync('index.html');
+
+// The chat page to be returned when a user has logged in.
+var chatPage = fs.readFileSync('chat.html');
 
 //-----------------------------------------------------------------------------
 // :: Functions
 
 /**
- * Handle all http requests by returning our one and only page.
+ * Handle all HTTP requests.
+ * 
+ * @param {http.ServerRequest} The HTTP request to handle.
+ * @param {http.ServerResponse} The HTTP response to the request.
  */
-function handleReq(req, res) {
-    // Load the page from the file system, if needed.
-    if (typeof page === 'undefined') {
-        fs.readFile(__dirname + '/test.html', function(err, data) {
-            // Make sure the page was read.
-            if (err) {
-                res.writeHead(500);
-                return res.end('Error loading test.html');
-            }
-            
-            // Save the page contents so they aren't loaded for each request.
-            page = data;
-    
-            // Send back the page.
-            res.writeHead(200);
-            res.end(page);
-        });
-    } else {
-        // Send back the page.
-        res.writeHead(200);
-        res.end(page);
-    }
+function handleRequest(request, response) {
+	switch(request.method) {
+	case 'GET':
+    	// Send back the login page.
+        response.writeHead(200);
+        response.end(loginPage);
+	    break;
+	case 'POST':
+    	// Send back the chat page.
+        response.writeHead(200);
+        response.end(chatPage);
+		break;
+	default:
+		console.log('Received unsupported HTTP request: ' + request.method);
+	}
 }
 
 /**
@@ -86,7 +85,7 @@ function handleMessage(message, client) {
 http.listen(8080);
 
 // Handle incoming client connections.
-server.sockets.on('connection', function(client) {
+chat.sockets.on('connection', function(client) {
     // TODO: Send back the list of chat rooms.
     
 	// Dispatch all received messages to handleMessage().
