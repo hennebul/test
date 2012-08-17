@@ -4,28 +4,132 @@
   
 <body>
 
+<div id="connecting">Connecting to chat server . . .</div>
+
+<!-- Hide the login form until we are connected. -->
+<form id="loginForm" style="display:none">
+  User: <input id="user" type="text" />
+  <input id="login" type="button" value="Login" />
+  <input id="logout" type="button" value="Logout" style="display:none"/>
+</form>
+
+<!-- Hide the chat room form until we are logged in. -->
+<form id="roomForm" style="display:none">
+  Chat Room: <input id="room" type="text" />
+  <input id="createRoom" type="button" value="Create" />
+</form>
+
+<!-- Placing script tags at the bottom for efficient page loading. -->
 <script src="http://code.jquery.com/jquery-1.8.0.min.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
+    // Create a connection to the chat server.
     var socket = io.connect('http://localhost:8080');
-    socket.on('connect', function() {
-        $('body').append('<div>Connected to chat</div>');
+
+    $(document).ready(function() {
+        // Refresh the page to logout.
+        $('#logout').click(function() {
+            location.reload();
+        });
         
-        socket.emit(
-            'message',
-            {type: 'join', user: 'liam', room: 'chat'}
-        );
-        socket.emit(
-            'message',
-            {type: 'chat', user: 'liam', room: 'chat', text: 'hi there'}
-        );
-        socket.emit(
-            'message',
-            {type: 'leave', user: 'liam', room: 'chat'}
-        );
+        // Send a message to the chat server to login.
+        $('#login').click(function() {
+            $(this).hide();
+            $('#user').attr('readonly', true);
+            $('#logout').show();
+            $('#roomForm').show();
+            
+            socket.emit('login', {user: $('#user').val()});
+        });
+
+        // Send a message to the chat server to create a chat room.
+        $('#createRoom').click(function() {
+            socket.emit('create', {room: $('#room').val()});
+
+            $('#room').val('');
+        });
+    }); 
+    
+    socket.on('connect', function() {
+        // Hide the connecting message.
+        $('#connecting').hide();
+        
+        // Show the login form.
+        $('#loginForm').show();
     });
-    socket.on('message', function(data) {
-        $('body').append('<div>' + data + '</div>');
+    
+    socket.on('room', function(data) {
+        // Add a div for the room.
+        $('body')
+            .append('<div id="' + data.room + '">' + data.room + '</div>');
+        
+        // Add a join button.
+        var join = data.room + 'Join';
+        $('#' + data.room)
+            .append('<input id="' + join + '" type="button" value="Join" />');
+        
+        // Add a hidden leave button.
+        var leave = data.room + 'Leave';
+        $('#' + data.room)
+            .append('<input id="' + leave
+                    + '" type="button" value="Leave" style="display:none"/>');
+        
+        // Add a hidden input box to send a chat message.
+        var chatDiv = data.room + 'ChatDiv';
+        var chat = data.room + 'Chat';
+        var send = data.room + 'Send';
+        $('#' + data.room)
+            .append('<div id="' + chatDiv + '" style="display:none"></div>');
+        $('#' + chatDiv)
+            .append('<input id="' + chat + '" type="text"/>');
+        $('#' + chatDiv)
+            .append('<input id="' + send + '" type="button" value="Send"/>');
+        
+        // When send is clicked send the chat to the chat server and display it
+        // locally.
+        $('#' + send).click(function() {
+            socket.emit('chat',
+                        {room: data.room, text: $('#' + chat).val()});
+            $('#' + data.room)
+                .append('<div>' + $('#user').val() + ': '
+                        + $('#' + chat).val() + '</div>');
+            
+            // Clear the chat field for a new message.
+            $('#' + chat).val('');
+        });
+        
+        // When join is clicked send a message to the chat server to join the
+        // chat room.
+        $('#' + join).click(function() {
+            $(this).hide();
+            $('#' + leave).show();
+            $('#' + chatDiv).show();
+            
+            socket.emit('join', {room: data.room});
+        });
+        
+        // When leave is clicked send a message to the chat server to leave
+        // the chat room.
+        $('#' + leave).click(function() {
+            $(this).hide();
+            $('#' + join).show();
+            $('#' + chatDiv).hide();
+            
+            socket.emit('leave', {room: data.room});
+        });
+    });
+    
+    socket.on('join', function(data) {
+        $('#' + data.room).append('<div>' + data.user + ' has joined</div>');
+    });
+    
+    socket.on('leave', function(data) {
+        $('#' + data.room).append('<div>' + data.user + ' has left</div>');
+    });
+    
+    socket.on('chat', function(data) {
+        $('#' + data.room)
+            .append('<div>' + data.user + ': ' + data.text + '</div>');
     });
 </script>
 
