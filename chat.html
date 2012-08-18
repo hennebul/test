@@ -88,12 +88,13 @@
         // When send is clicked send the chat to the chat server and display it
         // locally.
         $('#' + send).click(function() {
-            socket.emit('chat',
-                        {room: data.room, text: $('#' + chat).val()});
-            $('#' + data.room)
-                .append('<div>' + $('#user').val() + ': '
+            $('#' + chat)
+                .before('<div>' + $('#user').val() + ': '
                         + $('#' + chat).val() + '</div>');
             
+            socket.emit('chat',
+                        {room: data.room, text: $('#' + chat).val()});
+                        
             // Clear the chat field for a new message.
             $('#' + chat).val('');
         });
@@ -120,16 +121,19 @@
     });
     
     socket.on('join', function(data) {
-        $('#' + data.room).append('<div>' + data.user + ' has joined</div>');
+        $('#' + data.room + 'Chat')
+            .before('<div>' + data.user + ' has joined</div>');
     });
     
     socket.on('leave', function(data) {
-        $('#' + data.room).append('<div>' + data.user + ' has left</div>');
+        $('#' + data.room + 'Chat')
+            .before('<div>' + data.user + ' has left</div>');
     });
     
     socket.on('chat', function(data) {
-        $('#' + data.room)
-            .append('<div>' + data.user + ': ' + data.text + '</div>');
+        // Display the chat text before the send input box. 
+        $('#' + data.room + 'Chat')
+            .before('<div>' + data.user + ': ' + data.text + '</div>');
     });
 </script>
 

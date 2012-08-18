@@ -28,15 +28,26 @@ var chatRooms = [];
  * @param {http.ServerResponse} response The HTTP response to the request.
  */
 function handleRequest(request, response) {
-	switch(request.method) {
-	case 'GET':
-    	// Send back the chat page.
+    switch(request.method) {
+    case 'GET':
+        // Send back the chat page.
+        
         response.writeHead(200);
         response.end(chatPage);
-	    break;
-	default:
-		console.log('Received unsupported HTTP request: ' + request.method);
-	}
+        break;
+    default:
+        console.log('Received unsupported HTTP request: ' + request.method);
+    }
+}
+
+/**
+ * Check if the client socket is logged in.
+ * 
+ * @param {socket.io.Socket} client The client socket to check.
+ * @returns True if the client is logged in.
+ */
+function isLoggedIn(client) {
+    return typeof client.user !== 'undefined';
 }
 
 //-----------------------------------------------------------------------------
@@ -54,9 +65,9 @@ chat.sockets.on('connection', function(client) {
         console.log(client.user + ' has logged in');
 
         // Send the list of all chat rooms to the user.
-        for (var i = 0; i < chatRooms.length; i++) {
-            client.emit('room', {room: chatRooms[i]});
-        }
+        chatRooms.forEach(function(room) {
+            client.emit('room', {room: room});
+        });
     });
 
     // Create a chat room.
@@ -64,9 +75,12 @@ chat.sockets.on('connection', function(client) {
         chatRooms.push(message.room);
         console.log(client.user + ' has created chat room ' + message.room);
         
-        // Tell all users about the chat room.
-        client.emit('room', {room: message.room});
-        client.broadcast.emit('room', {room: message.room});
+        // Tell all logged in users about the chat room.
+        chat.sockets.clients().forEach(function(client) {
+            if (isLoggedIn(client)) {
+                client.emit('room', {room: message.room});
+            }
+        });
     });
 
     // Join a chat room.
@@ -95,11 +109,25 @@ chat.sockets.on('connection', function(client) {
             .emit('chat',
                   {room: message.room, user: client.user, text: message.text});
     });
-	
-	// TODO: Handle disconnects: Tell the other users that a user has left.
-	client.on('disconnect', function() {
-		client.broadcast.to('chat').emit('message', 'user has left the chat');
-	});
+
+    // Disconnect from the chat server.
+    client.on('disconnect', function() {
+        if (!isLoggedIn(client)) {
+            return;
+        }
+        
+        // Tell each room that the client joined that they have left.
+        for (var room in client.manager.roomClients[client.id]) {
+            if (room) {
+                // GOTCHA: Strip out the '/' in the room name.
+                room = room.substr(1)
+                console.log(client.user + ' has left chat room ' + room);
+                client.broadcast.to(room)
+                    .emit('leave', {room: room, user: client.user});
+            }
+        }
+        console.log(client.user + ' has disconnected');
+    });
 });
 
 //*****************************************************************************
