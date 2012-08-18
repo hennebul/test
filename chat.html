@@ -8,15 +8,15 @@
 
 <!-- Hide the login form until we are connected. -->
 <form id="loginForm" style="display:none">
-  User: <input id="user" type="text" />
-  <input id="login" type="button" value="Login" />
+  <label for="user">User: </label><input id="user" type="text" />
+  <input id="login" type="submit" value="Login" />
   <input id="logout" type="button" value="Logout" style="display:none"/>
 </form>
 
 <!-- Hide the chat room form until we are logged in. -->
 <form id="roomForm" style="display:none">
-  Chat Room: <input id="room" type="text" />
-  <input id="createRoom" type="button" value="Create" />
+  <label for="room">Chat Room: </label><input id="room" type="text" />
+  <input id="createRoom" type="submit" value="Create" />
 </form>
 
 <!-- Placing script tags at the bottom for efficient page loading. -->
@@ -33,20 +33,26 @@
         });
         
         // Send a message to the chat server to login.
-        $('#login').click(function() {
-            $(this).hide();
+        $('#loginForm').submit(function() {
+            $('#login').hide();
             $('#user').attr('readonly', true);
             $('#logout').show();
             $('#roomForm').show();
             
             socket.emit('login', {user: $('#user').val()});
+            
+            // Suppress the actual submit.
+            return false;
         });
 
         // Send a message to the chat server to create a chat room.
-        $('#createRoom').click(function() {
+        $('#roomForm').submit(function() {
             socket.emit('create', {room: $('#room').val()});
 
             $('#room').val('');
+
+            // Suppress the actual submit.
+            return false;
         });
     }); 
     
@@ -58,10 +64,12 @@
         $('#loginForm').show();
     });
     
+    // Handle getting a new chat room from the chat server.
     socket.on('room', function(data) {
         // Add a div for the room.
         $('body')
-            .append('<div id="' + data.room + '">' + data.room + '</div>');
+            .append('<div id="' + data.room + '">' + data.room + '</div>')
+            .append('<br/>');
         
         // Add a join button.
         var join = data.room + 'Join';
@@ -75,19 +83,19 @@
                     + '" type="button" value="Leave" style="display:none"/>');
         
         // Add a hidden input box to send a chat message.
-        var chatDiv = data.room + 'ChatDiv';
+        var chatForm = data.room + 'ChatForm';
         var chat = data.room + 'Chat';
         var send = data.room + 'Send';
         $('#' + data.room)
-            .append('<div id="' + chatDiv + '" style="display:none"></div>');
-        $('#' + chatDiv)
+            .append('<form id="' + chatForm + '" style="display:none"></div>');
+        $('#' + chatForm)
             .append('<input id="' + chat + '" type="text"/>');
-        $('#' + chatDiv)
-            .append('<input id="' + send + '" type="button" value="Send"/>');
+        $('#' + chatForm)
+            .append('<input id="' + send + '" type="submit" value="Send"/>');
         
         // When send is clicked send the chat to the chat server and display it
         // locally.
-        $('#' + send).click(function() {
+        $('#' + chatForm).submit(function() {
             $('#' + chat)
                 .before('<div>' + $('#user').val() + ': '
                         + $('#' + chat).val() + '</div>');
@@ -97,6 +105,9 @@
                         
             // Clear the chat field for a new message.
             $('#' + chat).val('');
+            
+            // Suppress the actual submit.
+            return false;
         });
         
         // When join is clicked send a message to the chat server to join the
@@ -104,36 +115,73 @@
         $('#' + join).click(function() {
             $(this).hide();
             $('#' + leave).show();
-            $('#' + chatDiv).show();
+            $('#' + chatForm).show();
             
             socket.emit('join', {room: data.room});
         });
         
         // When leave is clicked send a message to the chat server to leave
-        // the chat room.
+        // the chat room, clear the chat history and remove the users list.
         $('#' + leave).click(function() {
             $(this).hide();
             $('#' + join).show();
-            $('#' + chatDiv).hide();
-            
+            $('#' + chatForm).hide();
+            $('#' + data.room + 'Users').remove();
+
+            // Remove the chat history (all divs in the chatForm).
+            $('#' + chatForm + ' div').remove();
+
             socket.emit('leave', {room: data.room});
         });
     });
     
+    // Handle a new user joining a chat room.
     socket.on('join', function(data) {
+        // Add the user to the users list for this chat room.
+        $('#' + data.room + 'Users')
+            .append(' ' + data.user
+                    // GOTCHA: Add a trailing space to allow proper removal.
+                    + ' ');
+        
+        // Add a chat message indicating that the new user joined.
         $('#' + data.room + 'Chat')
-            .before('<div>' + data.user + ' has joined</div>');
+            .before('<div style="color:green">' + data.user
+                    + ' has joined</div>');
+    });
+
+    // Handle the list of users that are in a chat room.
+    socket.on('users', function(data) {
+        // Display the list of users after the Leave button.
+        $('#' + data.room + ' > :button:last')
+            .after('<div id="' + data.room + 'Users">Users: '
+                   + data.users.join(' ')
+                   // GOTCHA: Add a trailing space to allow proper removal.
+                   + ' '
+                   + '</div>');
     });
     
+    // Handle a user that leaves a chat room.
     socket.on('leave', function(data) {
+        // Remove the user from the users list for this chat room.
+        var users = $('#' + data.room + 'Users');
+        users.html(users.html().replace(new RegExp(data.user + ' ', "ig"), ''));
+        
+        // Add a chat message indicating that the user has left.
         $('#' + data.room + 'Chat')
-            .before('<div>' + data.user + ' has left</div>');
+            .before('<div style="color:red">' + data.user + ' has left</div>');
     });
     
+    // Handle a chat message from a user.
     socket.on('chat', function(data) {
         // Display the chat text before the send input box. 
         $('#' + data.room + 'Chat')
             .before('<div>' + data.user + ': ' + data.text + '</div>');
+    });
+    
+    // Handle the chat server disconnecting.
+    socket.on('disconnect', function() {
+        // Refresh the page to attempt reconnecting.
+        location.reload();
     });
 </script>
 

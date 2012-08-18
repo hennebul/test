@@ -1,5 +1,3 @@
-//*****************************************************************************
-
 //-----------------------------------------------------------------------------
 // :: Variables
 
@@ -31,7 +29,6 @@ function handleRequest(request, response) {
     switch(request.method) {
     case 'GET':
         // Send back the chat page.
-        
         response.writeHead(200);
         response.end(chatPage);
         break;
@@ -41,14 +38,13 @@ function handleRequest(request, response) {
 }
 
 /**
- * Check if the client socket is logged in.
+ * Check if the socket is logged in.
  * 
- * @param {socket.io.Socket} client The client socket to check.
- * @returns True if the client is logged in.
+ * @returns True if the socket is logged in.
  */
-function isLoggedIn(client) {
-    return typeof client.user !== 'undefined';
-}
+require('socket.io').Socket.prototype.isLoggedIn = function() {
+    return typeof this.user !== 'undefined';
+};
 
 //-----------------------------------------------------------------------------
 // :: Main
@@ -57,77 +53,84 @@ function isLoggedIn(client) {
 http.listen(8080);
 
 // Handle incoming client connections.
-chat.sockets.on('connection', function(client) {
+chat.sockets.on('connection', function(socket) {
     // Login the user.
-    client.on('login', function(message) {
+    socket.on('login', function(message) {
         // Save their user name.
-        client.user = message.user;
-        console.log(client.user + ' has logged in');
+        socket.user = message.user;
+        console.log(socket.user + ' has logged in');
 
         // Send the list of all chat rooms to the user.
         chatRooms.forEach(function(room) {
-            client.emit('room', {room: room});
+            socket.emit('room', {room: room});
         });
     });
 
     // Create a chat room.
-    client.on('create', function(message) {
+    socket.on('create', function(message) {
         chatRooms.push(message.room);
-        console.log(client.user + ' has created chat room ' + message.room);
+        console.log(socket.user + ' has created chat room ' + message.room);
         
         // Tell all logged in users about the chat room.
         chat.sockets.clients().forEach(function(client) {
-            if (isLoggedIn(client)) {
+            if (client.isLoggedIn()) {
                 client.emit('room', {room: message.room});
             }
         });
     });
 
     // Join a chat room.
-    client.on('join', function(message) {
-        client.join(message.room);
-        console.log(client.user + ' has joined chat room ' + message.room);
+    socket.on('join', function(message) {
+        socket.join(message.room);
+        console.log(socket.user + ' has joined chat room ' + message.room);
+        
+        // Send the list of other users in the chat room to the user.
+        var users = [];
+        chat.sockets.clients(message.room).forEach(function(client) {
+            if (client.user !== socket.user) {
+                users.push(client.user);
+            }
+        });
+        socket.emit('users', {room: message.room, users: users});
         
         // Tell the other users that the user has joined.
-        client.broadcast.to(message.room)
-            .emit('join', {room: message.room, user: client.user});
+        socket.broadcast.to(message.room)
+            .emit('join', {room: message.room, user: socket.user});
     });
 
     // Leave a chat room.
-    client.on('leave', function(message) {
-        client.leave(message.room);
-        console.log(client.user + ' has left chat room ' + message.room);
+    socket.on('leave', function(message) {
+        socket.leave(message.room);
+        console.log(socket.user + ' has left chat room ' + message.room);
 
         // Tell the other users that the user has left.
-        client.broadcast.to(message.room)
-           .emit('leave', {room: message.room, user: client.user});
+        socket.broadcast.to(message.room)
+           .emit('leave', {room: message.room, user: socket.user});
     });
 
     // Chat with users in a chat room.
-    client.on('chat', function(message) {
-        client.broadcast.to(message.room)
+    socket.on('chat', function(message) {
+        socket.broadcast.to(message.room)
             .emit('chat',
-                  {room: message.room, user: client.user, text: message.text});
+                  {room: message.room, user: socket.user, text: message.text});
     });
 
     // Disconnect from the chat server.
-    client.on('disconnect', function() {
-        if (!isLoggedIn(client)) {
+    socket.on('disconnect', function() {
+        if (!socket.isLoggedIn()) {
             return;
         }
         
-        // Tell each room that the client joined that they have left.
-        for (var room in client.manager.roomClients[client.id]) {
+        // Tell each room that the socket joined that they have left.
+        for (var room in socket.manager.roomClients[socket.id]) {
             if (room) {
                 // GOTCHA: Strip out the '/' in the room name.
                 room = room.substr(1)
-                console.log(client.user + ' has left chat room ' + room);
-                client.broadcast.to(room)
-                    .emit('leave', {room: room, user: client.user});
+                console.log(socket.user + ' has left chat room ' + room);
+                socket.broadcast.to(room)
+                    .emit('leave', {room: room, user: socket.user});
             }
         }
-        console.log(client.user + ' has disconnected');
+        console.log(socket.user + ' has disconnected');
     });
 });
-
-//*****************************************************************************
