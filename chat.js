@@ -1,6 +1,12 @@
 //-----------------------------------------------------------------------------
 // :: Variables
 
+// Redis client.
+var redis = require('redis').createClient();
+
+// The name of the key for the set of chat rooms stored in redis.
+var chatRooms = 'rooms';
+
 // Web server.
 var http = require('http').createServer(handleRequest);
 
@@ -12,9 +18,6 @@ var fs = require('fs');
 
 // The chat page to be returned for all HTTP GET requests.
 var chatPage = fs.readFileSync('chat.html');
-
-// The chat rooms that have been created.
-var chatRooms = [];
 
 //-----------------------------------------------------------------------------
 // :: Functions
@@ -53,6 +56,11 @@ require('socket.io').Socket.prototype.isLoggedIn = function () {
 // Start the web server.
 http.listen(8080);
 
+// Log any errors from the redis server.
+redis.on('error', function (error) {
+    console.error('Redis error: ' + error);
+});
+
 // Handle incoming client connections.
 chat.sockets.on('connection', function (socket) {
     // Login the user.
@@ -61,22 +69,84 @@ chat.sockets.on('connection', function (socket) {
         socket.user = message.user;
         console.log(socket.user + ' has logged in');
 
-        // Send the list of all chat rooms to the user.
-        chatRooms.forEach(function (room) {
-            socket.emit('room', {room: room});
+        // Get the set of chat rooms from redis.
+        redis.smembers(chatRooms, function (error, rooms) {
+            if (error) {
+                console.error('Error retrieving chat rooms from redis: '
+                              + error);
+                return;
+            }
+
+            // Send the set of chat rooms to the user.
+            rooms.forEach(function (room) {
+                socket.emit('room', {room: room});
+            });
         });
     });
 
     // Create a chat room.
     socket.on('create', function (message) {
-        chatRooms.push(message.room);
-        console.log(socket.user + ' has created chat room ' + message.room);
-
-        // Tell all logged in users about the chat room.
-        chat.sockets.clients().forEach(function (client) {
-            if (client.isLoggedIn()) {
-                client.emit('room', {room: message.room});
+        // Check if the chat room already exists.
+        redis.sismember(chatRooms, message.room, function (error, isMember) {
+            if (error) {
+                console.error('Error determining if ' + message.room
+                              + ' is an existing chat room in redis: ' + error);
+                return;
             }
+
+            // Stop if the chat room already exists.
+            if (isMember) {
+                console.log('Chat room ' + message.room + ' already exists');
+                return;
+            }
+
+            // Otherwise, add it to redis.
+            redis.sadd(chatRooms, message.room, function (error, added) {
+                if (error) {
+                    console.error('Error adding chat room ' + message.room
+                                  + ' in redis: ' + error);
+                    return;
+                }
+
+                console.log(socket.user + ' has created chat room '
+                            + message.room);
+
+                // Tell all logged in users about the chat room.
+                chat.sockets.clients().forEach(function (client) {
+                    if (client.isLoggedIn()) {
+                        client.emit('room', {room: message.room});
+                    }
+                });
+            });
+        });
+    });
+
+    // Remove a chat room.
+    socket.on('remove', function (message) {
+        // Remove the chat room from the set in redis.
+        redis.srem(chatRooms, message.room, function (error, result) {
+            if (error) {
+                console.error('Error removing chat room ' + message.room
+                              + ' in redis: ' + error);
+                return;
+            }
+
+            console.log(socket.user + ' has removed chat room '
+                        + message.room);
+
+            // Leave all sockets that are in that room.
+            chat.sockets.clients(message.room).forEach(function (client) {
+                client.leave(message.room);
+                console.log(client.user + ' has been removed from chat room '
+                            + message.room);
+            });
+
+            // Tell all logged in users that the chat room was removed.
+            chat.sockets.clients().forEach(function (client) {
+                if (client.isLoggedIn()) {
+                    client.emit('remove', {room: message.room});
+                }
+            });
         });
     });
 
@@ -106,7 +176,7 @@ chat.sockets.on('connection', function (socket) {
 
         // Tell the other users that the user has left.
         socket.broadcast.to(message.room)
-           .emit('leave', {room: message.room, user: socket.user});
+            .emit('leave', {room: message.room, user: socket.user});
     });
 
     // Chat with users in a chat room.
@@ -122,11 +192,11 @@ chat.sockets.on('connection', function (socket) {
             return;
         }
 
-        // Tell each room that the socket joined that they have left.
+        // Tell each room that the socket joined that the user has left.
         for (var room in socket.manager.roomClients[socket.id]) {
             if (room) {
                 // GOTCHA: Strip out the '/' in the room name.
-                room = room.substr(1)
+                room = room.substr(1);
                 console.log(socket.user + ' has left chat room ' + room);
                 socket.broadcast.to(room)
                     .emit('leave', {room: room, user: socket.user});

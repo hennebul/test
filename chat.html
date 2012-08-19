@@ -26,14 +26,14 @@
     // Create a connection to the chat server.
     var socket = io.connect('http://localhost:8080');
 
-    $(document).ready(function() {
+    $(document).ready(function () {
         // Refresh the page to logout.
-        $('#logout').click(function() {
+        $('#logout').click(function () {
             location.reload();
         });
         
         // Send a message to the chat server to login.
-        $('#loginForm').submit(function() {
+        $('#loginForm').submit(function () {
             $('#login').hide();
             $('#user').attr('readonly', true);
             $('#logout').show();
@@ -46,7 +46,7 @@
         });
 
         // Send a message to the chat server to create a chat room.
-        $('#roomForm').submit(function() {
+        $('#roomForm').submit(function () {
             socket.emit('create', {room: $('#room').val()});
 
             $('#room').val('');
@@ -56,7 +56,7 @@
         });
     }); 
     
-    socket.on('connect', function() {
+    socket.on('connect', function () {
         // Hide the connecting message.
         $('#connecting').hide();
         
@@ -65,11 +65,16 @@
     });
     
     // Handle getting a new chat room from the chat server.
-    socket.on('room', function(data) {
+    socket.on('room', function (data) {
         // Add a div for the room.
         $('body')
             .append('<div id="' + data.room + '">' + data.room + '</div>')
-            .append('<br/>');
+        
+        // Add a remove button.
+        var remove = data.room + 'Remove';
+        $('#' + data.room)
+            .append('<input id="' + remove
+                    + '" type="button" value="Remove" />');
         
         // Add a join button.
         var join = data.room + 'Join';
@@ -82,7 +87,7 @@
             .append('<input id="' + leave
                     + '" type="button" value="Leave" style="display:none"/>');
         
-        // Add a hidden input box to send a chat message.
+        // Add a hidden form to send a chat message.
         var chatForm = data.room + 'ChatForm';
         var chat = data.room + 'Chat';
         var send = data.room + 'Send';
@@ -95,7 +100,7 @@
         
         // When send is clicked send the chat to the chat server and display it
         // locally.
-        $('#' + chatForm).submit(function() {
+        $('#' + chatForm).submit(function () {
             $('#' + chat)
                 .before('<div>' + $('#user').val() + ': '
                         + $('#' + chat).val() + '</div>');
@@ -110,9 +115,15 @@
             return false;
         });
         
+        // When remove is clicked send a message to the chat server to remove
+        // the chat room.
+        $('#' + remove).click(function () {
+            socket.emit('remove', {room: data.room});
+        });
+        
         // When join is clicked send a message to the chat server to join the
         // chat room.
-        $('#' + join).click(function() {
+        $('#' + join).click(function () {
             $(this).hide();
             $('#' + leave).show();
             $('#' + chatForm).show();
@@ -122,7 +133,7 @@
         
         // When leave is clicked send a message to the chat server to leave
         // the chat room, clear the chat history and remove the users list.
-        $('#' + leave).click(function() {
+        $('#' + leave).click(function () {
             $(this).hide();
             $('#' + join).show();
             $('#' + chatForm).hide();
@@ -134,9 +145,15 @@
             socket.emit('leave', {room: data.room});
         });
     });
-    
+
+    // Handle a chat room being removed.
+    socket.on('remove', function (data) {
+        // Remove the chat room div.
+        $('#' + data.room).remove();
+    });
+
     // Handle a new user joining a chat room.
-    socket.on('join', function(data) {
+    socket.on('join', function (data) {
         // Add the user to the users list for this chat room.
         $('#' + data.room + 'Users')
             .append(' ' + data.user
@@ -150,7 +167,7 @@
     });
 
     // Handle the list of users that are in a chat room.
-    socket.on('users', function(data) {
+    socket.on('users', function (data) {
         // Display the list of users after the Leave button.
         $('#' + data.room + ' > :button:last')
             .after('<div id="' + data.room + 'Users">Users: '
@@ -161,7 +178,7 @@
     });
     
     // Handle a user that leaves a chat room.
-    socket.on('leave', function(data) {
+    socket.on('leave', function (data) {
         // Remove the user from the users list for this chat room.
         var users = $('#' + data.room + 'Users');
         users.html(users.html().replace(new RegExp(data.user + ' ', "ig"), ''));
@@ -172,14 +189,14 @@
     });
     
     // Handle a chat message from a user.
-    socket.on('chat', function(data) {
+    socket.on('chat', function (data) {
         // Display the chat text before the send input box. 
         $('#' + data.room + 'Chat')
             .before('<div>' + data.user + ': ' + data.text + '</div>');
     });
     
     // Handle the chat server disconnecting.
-    socket.on('disconnect', function() {
+    socket.on('disconnect', function () {
         // Refresh the page to attempt reconnecting.
         location.reload();
     });
