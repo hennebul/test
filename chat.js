@@ -2,22 +2,22 @@
 // :: Variables
 
 // Redis client.
-var redis = require('redis').createClient();
+const redis = require('redis').createClient();
 
 // The name of the key for the set of chat rooms stored in redis.
-var chatRooms = 'rooms';
+cpnst chatRooms = 'rooms';
 
 // Web server.
-var http = require('http').createServer(handleRequest);
+const http = require('http').createServer(handleRequest);
 
 // Chat server.
-var chat = require('socket.io').listen(http);
+const chat = require('socket.io').listen(http);
 
 // File system object.
-var fs = require('fs');
+const fs = require('fs');
 
 // The chat page to be returned for all HTTP GET requests.
-var chatPage = fs.readFileSync('chat.html');
+const chatPage = fs.readFileSync('chat.html');
 
 //-----------------------------------------------------------------------------
 // :: Functions
@@ -156,7 +156,7 @@ chat.sockets.on('connection', function (socket) {
         console.log(socket.user + ' has joined chat room ' + message.room);
 
         // Send the list of other users in the chat room to the user.
-        var users = [];
+        let users = [];
         chat.sockets.clients(message.room).forEach(function (client) {
             if (client.user !== socket.user) {
                 users.push(client.user);
@@ -193,7 +193,7 @@ chat.sockets.on('connection', function (socket) {
         }
 
         // Tell each room that the socket joined that the user has left.
-        for (var room in socket.manager.roomClients[socket.id]) {
+        for (let room in socket.manager.roomClients[socket.id]) {
             if (room) {
                 // GOTCHA: Strip out the '/' in the room name.
                 room = room.substr(1);
